@@ -121,7 +121,7 @@ function create_window()
         destroy(dialog)
     end
     
-    # DELETE
+        # DELETE
     signal_connect(btn_del, "clicked") do _
         iter = Gtk.selected(selection)
         if iter !== nothing
@@ -133,17 +133,28 @@ function create_window()
                 return
             end
             
-            # Confirmation simple
-            dlg = GtkMessageDialog(win, Gtk.GConstants.GtkDialogFlags.MODAL,
-                                  Gtk.GConstants.GtkMessageType.QUESTION,
-                                  Gtk.GConstants.GtkButtonsType.YES_NO,
-                                  "Supprimer '$name' ?")
-            if run(dlg) == Gtk.GConstants.GtkResponseType.YES
+            # Dialogue de confirmation simplifié
+            dlg = GtkDialog("Confirmer", win, Gtk.GConstants.GtkDialogFlags.MODAL,
+                           (("Annuler", 0), ("Supprimer", 1)))
+            
+            content = Gtk.GAccessor.content_area(dlg)
+            vbox_dlg = GtkBox(:v)
+            set_gtk_property!(vbox_dlg, :margin, 20)
+            push!(content, vbox_dlg)
+            
+            lbl = GtkLabel("Supprimer '$name' ?")
+            push!(vbox_dlg, lbl)
+            
+            showall(dlg)
+            response = run(dlg)
+            destroy(dlg)
+            
+            if response == 1  # 1 = Supprimer
                 if Persistence.remove_radio(name)
                     Gtk.delete!(list_store, iter)
+                    println("🗑️ Supprimé: $name")
                 end
             end
-            destroy(dlg)
         end
     end
     

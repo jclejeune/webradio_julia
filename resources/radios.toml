@@ -1,0 +1,19 @@
+[[radios]]
+name = "Radio Perú"
+url = "https://stream.zeno.fm/2kwbahnnq2zuv"
+
+[[radios]]
+name = "Shonan Beach FM"
+url = "http://shonanbeachfm.out.airtime.pro:8000/shonanbeachfm_a"
+
+[[radios]]
+name = "Soma FM Groove Salad"
+url = "https://ice1.somafm.com/gsclassic-128-mp3"
+
+[[radios]]
+name = "Radio Moris"
+url = "https://azc.radiomoris.com:8010/radio.mp3"
+
+[[radios]]
+name = "J-Rock PowerPlay"
+url = "http://kathy.torontocast.com:3340/"

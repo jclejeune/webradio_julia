@@ -45,6 +45,15 @@ treeview:selected {
     background-color: #FA8B01;
     color: #000000;
 }
+
+label.title-display {
+    color: #BBBBBB;
+    font-family: monospace;
+    font-size: 14px;
+    font-style: italic;
+    background-color: transparent;
+}
+    
 """
 
 function apply_theme!()

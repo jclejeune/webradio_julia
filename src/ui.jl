@@ -5,13 +5,17 @@ include("theme.jl")
 using .Theme
 include("persistence.jl")
 using .Persistence
+include("audio_engine.jl")
+using .AudioEngine
+include("metadata.jl")
+using .Metadata
 
 export run_ui
 
 function create_window()
     Theme.apply_theme!()
     
-    win = GtkWindow("WebRadio Player", 600, 600)
+    win = GtkWindow("WebRadio Player", 600, 650)
     
     vbox = GtkBox(:v)
     set_gtk_property!(vbox, :spacing, 5)
@@ -19,12 +23,20 @@ function create_window()
     
     # === DISPLAY ===
     display_frame = GtkFrame()
-    set_gtk_property!(display_frame, :height_request, 100)
+    set_gtk_property!(display_frame, :height_request, 120)
     push!(vbox, display_frame)
     
-    radio_label = GtkLabel("WebRadio Julia")
-    Theme.add_css_class!(radio_label, "radio-display")
-    push!(display_frame, radio_label)
+    display_vbox = GtkBox(:v)
+    set_gtk_property!(display_vbox, :spacing, 5)
+    push!(display_frame, display_vbox)
+    
+    station_label = GtkLabel("WebRadio Julia")
+    Theme.add_css_class!(station_label, "radio-display")
+    push!(display_vbox, station_label)
+    
+    title_label = GtkLabel("Sélectionnez une radio...")
+    Theme.add_css_class!(title_label, "title-display")
+    push!(display_vbox, title_label)
     
     # === BOUTONS CRUD ===
     btn_box = GtkBox(:h)
@@ -42,7 +54,6 @@ function create_window()
     set_gtk_property!(scrolled, :vexpand, true)
     push!(vbox, scrolled)
     
-    # 3 colonnes: Nom, URL, Editable?
     list_store = GtkListStore(String, String, Bool)
     tree_view = GtkTreeView(GtkTreeModel(list_store))
     set_gtk_property!(tree_view, :headers_visible, false)
@@ -53,109 +64,186 @@ function create_window()
     
     push!(scrolled, tree_view)
     
-    # Charger les données
+    # Chargement initial
     for (name, url, editable) in Persistence.load_radios()
         push!(list_store, (name, url, editable))
     end
     
     # === CONTRÔLES LECTURE ===
     ctrl_box = GtkBox(:h)
-    set_gtk_property!(ctrl_box, :spacing, 5)
+    set_gtk_property!(ctrl_box, :spacing, 10)
     set_gtk_property!(ctrl_box, :margin, 10)
     set_gtk_property!(ctrl_box, :halign, Gtk.GConstants.GtkAlign.CENTER)
     push!(vbox, ctrl_box)
     
+    btn_prev = GtkButton("⏮")
     btn_play = GtkButton("▶ Play")
     btn_stop = GtkButton("■ Stop")
-    push!(ctrl_box, btn_play)
-    push!(ctrl_box, btn_stop)
+    btn_next = GtkButton("⏭")
     
-    # === CALLBACKS ===
+    for btn in [btn_prev, btn_play, btn_stop, btn_next]
+        Theme.add_css_class!(btn, "transport")
+        push!(ctrl_box, btn)
+    end
+    
+    # === LOGIQUE ===
     selection = Gtk.GAccessor.selection(tree_view)
     
-    # PLAY
-    signal_connect(btn_play, "clicked") do _
+    # Fonction helper pour jouer la sélection actuelle
+    function play_current()
         iter = Gtk.selected(selection)
-        if iter !== nothing
-            name = list_store[iter, 1]
-            set_gtk_property!(radio_label, :label, "▶ $name")
-            println("Lecture: $(list_store[iter, 2])")
+        if iter === nothing
+            println("⚠️ Sélectionnez une radio d'abord")
+            return
+        end
+        
+        name = list_store[iter, 1]
+        url = list_store[iter, 2]
+        
+        set_gtk_property!(station_label, :label, name)
+        set_gtk_property!(title_label, :label, "Connexion...")
+        
+        AudioEngine.start_playback(url)
+        
+        Metadata.start_metadata_fetcher(url) do title
+            Gtk.g_idle_add() do
+                set_gtk_property!(title_label, :label, title)
+                return false
+            end
+            println("🎵 $title")
         end
     end
     
-    # STOP
-    signal_connect(btn_stop, "clicked") do _
-        set_gtk_property!(radio_label, :label, "WebRadio Julia")
+    # Callbacks
+    signal_connect(btn_play, "clicked") do _
+        play_current()
     end
     
-    # ADD
+    signal_connect(btn_stop, "clicked") do _
+        AudioEngine.stop_playback()
+        Metadata.stop_metadata_fetcher()
+        set_gtk_property!(title_label, :label, "Arrêté")
+        println("■ Stop")
+    end
+    
+    signal_connect(btn_prev, "clicked") do _
+        iter = Gtk.selected(selection)
+        if iter !== nothing
+            path = Gtk.GAccessor.path(list_store, iter)
+            idx = parse(Int, Gtk.GAccessor.to_string(path)) + 1  # 0-based -> 1-based
+            if idx > 1
+                new_iter = Gtk.iter_from_index(list_store, idx - 1)
+                Gtk.select(selection, new_iter)
+                play_current()
+            end
+        elseif length(list_store) > 0
+            # Si rien de sélectionné, joue la dernière
+            iter = Gtk.iter_from_index(list_store, length(list_store))
+            Gtk.select(selection, iter)
+            play_current()
+        end
+    end
+    
+    signal_connect(btn_next, "clicked") do _
+        iter = Gtk.selected(selection)
+        n = length(list_store)
+        if iter !== nothing
+            path = Gtk.GAccessor.path(list_store, iter)
+            idx = parse(Int, Gtk.GAccessor.to_string(path)) + 1
+            if idx < n
+                new_iter = Gtk.iter_from_index(list_store, idx + 1)
+                Gtk.select(selection, new_iter)
+                play_current()
+            end
+        elseif n > 0
+            # Si rien de sélectionné, joue la première
+            iter = Gtk.iter_from_index(list_store, 1)
+            Gtk.select(selection, iter)
+            play_current()
+        end
+    end
+    
+    # Double-clic = Play (version compatible Gtk.jl 1.3.1)
+    signal_connect(tree_view, "row-activated") do widget, path, col
+        # Le double-clic sélectionne automatiquement la ligne
+        # On récupère juste l'iter déjà sélectionné
+        iter = Gtk.selected(selection)
+        if iter !== nothing
+            play_current()
+        end
+    end
+    
+    # Ajouter
     signal_connect(btn_add, "clicked") do _
-        dialog = GtkDialog("Ajouter", win, Gtk.GConstants.GtkDialogFlags.MODAL,
+        dialog = GtkDialog("Ajouter une radio", win, Gtk.GConstants.GtkDialogFlags.MODAL,
                           (("Annuler", 0), ("Ajouter", 1)))
         
         content = Gtk.GAccessor.content_area(dialog)
         v = GtkBox(:v)
-        set_gtk_property!(v, :margin, 10)
+        set_gtk_property!(v, :spacing, 10)
+        set_gtk_property!(v, :margin, 20)
         push!(content, v)
         
-        push!(v, GtkLabel("Nom:"))
+        push!(v, GtkLabel("Nom de la radio :"))
         name_entry = GtkEntry()
         push!(v, name_entry)
         
-        push!(v, GtkLabel("URL:"))
+        push!(v, GtkLabel("URL du flux :"))
         url_entry = GtkEntry()
+        set_gtk_property!(url_entry, :text, "http://")
         push!(v, url_entry)
         
         showall(dialog)
-        if run(dialog) == 1
+        response = run(dialog)
+        
+        if response == 1
             name = get_gtk_property(name_entry, :text, String)
             url = get_gtk_property(url_entry, :text, String)
-            if !isempty(name) && !isempty(url)
+            if !isempty(name) && !isempty(url) && url != "http://"
                 if Persistence.add_radio(name, url)
                     push!(list_store, (name, url, true))
+                    println("✅ Ajouté: $name")
                 else
-                    println("URL déjà existante")
+                    println("❌ URL déjà existante")
                 end
             end
         end
         destroy(dialog)
     end
     
-        # DELETE
+    # Supprimer
     signal_connect(btn_del, "clicked") do _
         iter = Gtk.selected(selection)
-        if iter !== nothing
-            name = list_store[iter, 1]
-            editable = list_store[iter, 3]
-            
-            if !editable
-                println("Impossible de supprimer une radio par défaut")
-                return
-            end
-            
-            # Dialogue de confirmation simplifié
-            dlg = GtkDialog("Confirmer", win, Gtk.GConstants.GtkDialogFlags.MODAL,
-                           (("Annuler", 0), ("Supprimer", 1)))
-            
-            content = Gtk.GAccessor.content_area(dlg)
-            vbox_dlg = GtkBox(:v)
-            set_gtk_property!(vbox_dlg, :margin, 20)
-            push!(content, vbox_dlg)
-            
-            lbl = GtkLabel("Supprimer '$name' ?")
-            push!(vbox_dlg, lbl)
-            
-            showall(dlg)
-            response = run(dlg)
-            destroy(dlg)
-            
-            if response == 1  # 1 = Supprimer
-                if Persistence.remove_radio(name)
-                    Gtk.delete!(list_store, iter)
-                    println("🗑️ Supprimé: $name")
-                end
+        if iter === nothing
+            println("⚠️ Sélectionnez une radio à supprimer")
+            return
+        end
+        
+        name = list_store[iter, 1]
+        editable = list_store[iter, 3]
+        
+        if !editable
+            println("❌ Impossible de supprimer une radio par défaut")
+            return
+        end
+        
+        dlg = GtkDialog("Confirmer", win, Gtk.GConstants.GtkDialogFlags.MODAL,
+                       (("Annuler", 0), ("Supprimer", 1)))
+        
+        content = Gtk.GAccessor.content_area(dlg)
+        v = GtkBox(:v)
+        set_gtk_property!(v, :margin, 20)
+        push!(content, v)
+        push!(v, GtkLabel("Supprimer '$name' ?"))
+        
+        showall(dlg)
+        if run(dlg) == 1
+            if Persistence.remove_radio(name)
+                Gtk.delete!(list_store, iter)
+                println("🗑️ Supprimé: $name")
             end
         end
+        destroy(dlg)
     end
     
     return win

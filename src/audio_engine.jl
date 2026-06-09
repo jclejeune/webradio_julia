@@ -4,46 +4,53 @@ export start_playback, stop_playback, is_playing
 
 const current_process = Ref{Union{Base.Process, Nothing}}(nothing)
 
-"""
-Démarre la lecture avec GStreamer (playbin)
-Gère automatiquement : HTTP, décodage, sortie PulseAudio
-"""
 function start_playback(url::String)
-    stop_playback()  # Sécurité
-    
+    stop_playback()
+
     println("▶ Démarrage GStreamer...")
     println("   URL: $url")
-    
-    # Playbin = lecteur universel (gère MP3, AAC, OGG, etc.)
-    # pulsesink = sortie vers PulseAudio/PipeWire
+
     cmd = `gst-launch-1.0 playbin uri=$url audio-sink=pulsesink`
-    
-    # Redirige stderr vers devnull pour éviter le spam GStreamer
-    current_process[] = run(pipeline(cmd, stderr=devnull), wait=false)
-    
-    println("🔊 Lecture démarrée (PID: $(current_process[].pid))")
+
+    proc = run(pipeline(cmd, stderr=devnull), wait=false)
+
+    current_process[] = proc
+
+    atexit() do
+        stop_playback()
+    end
+
+    # ✅ On a retiré le proc.pid qui faisait crasher !
+    println("🔊 Lecture démarrée") 
     return true
 end
 
-"""
-Arrête la lecture
-"""
 function stop_playback()
-    if is_playing()
-        println("■ Arrêt de la lecture")
-        try
-            kill(current_process[])
-            wait(current_process[])
-        catch e
-            # Process déjà mort, c'est OK
+    if current_process[] !== nothing
+        proc = current_process[]
+
+        if process_running(proc)
+            # ✅ On a retiré le proc.pid ici aussi
+            println("■ Arrêt GStreamer") 
+
+            try
+                kill(proc, Base.SIGTERM)
+                sleep(0.2)
+
+                if process_running(proc)
+                    kill(proc, Base.SIGKILL)
+                end
+
+                wait(proc)
+            catch
+                # déjà mort → ok
+            end
         end
+
         current_process[] = nothing
     end
 end
 
-"""
-Vérifie si une lecture est en cours
-"""
 function is_playing()
     current_process[] !== nothing && process_running(current_process[])
 end

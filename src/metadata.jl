@@ -47,7 +47,7 @@ function get_header(headers, name::String, default::String="")
 end
 
 # ============================================================
-# HTTP BRUT (TCP) - pour HTTP
+# HTTP BRUT (TCP)
 # ============================================================
 
 function fetch_metadata_http(url::String)
@@ -84,7 +84,7 @@ function fetch_metadata_http(url::String)
 end
 
 # ============================================================
-# HTTPS via HTTP.jl - avec fallback
+# HTTPS via HTTP.jl
 # ============================================================
 
 function fetch_metadata_https(url::String)
@@ -117,8 +117,6 @@ function start_metadata_fetcher(url::String, on_title::Function)
     
     active_fetcher[] = @async begin
         try
-            # On NE met PLUS "Lecture en cours" ici. L'UI gère déjà "Connexion..."
-            
             scheme, host, port, path = parse_url(url)
             is_https = scheme == "https"
             
@@ -129,20 +127,15 @@ function start_metadata_fetcher(url::String, on_title::Function)
                 headers, io = fetch_metadata_http(url)
             end
             
-            # Échec réseau
             if headers === nothing
                 return
             end
             
-            # ✅ LE RÉSEAU A RÉPONDU OK (200) ! 
-            # Maintenant on peut dire que la lecture est en cours
             on_title("▶ Lecture en cours...")
             
             meta_int_str = get_header(headers, "icy-metaint", "0")
             meta_int = tryparse(Int, meta_int_str)
             
-            # Si le serveur ne supporte pas les métadonnées (ex: Radiomoris)
-            # On s'arrête là ! L'interface restera sagement sur "▶ Lecture en cours..."
             if meta_int === nothing || meta_int <= 0 || io === nothing
                 return
             end
@@ -150,7 +143,6 @@ function start_metadata_fetcher(url::String, on_title::Function)
             buffer = Vector{UInt8}(undef, meta_int)
             last_title = "▶ Lecture en cours..."
             
-            # Boucle pour lire les titres
             while active_fetcher[] === current_task() && isopen(io)
                 total = 0
                 while total < meta_int
@@ -176,7 +168,6 @@ function start_metadata_fetcher(url::String, on_title::Function)
                     if m !== nothing
                         raw_title = strip(m.captures[1])
                         
-                        # Si le titre est vide, on remet "Lecture en cours"
                         new_title = isempty(raw_title) ? "▶ Lecture en cours..." : "🎵 " * raw_title
                         
                         if new_title != last_title

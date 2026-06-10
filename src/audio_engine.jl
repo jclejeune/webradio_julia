@@ -27,21 +27,18 @@ function start_playback(url::String)
     udp_sock[] = sock
 
     audio_task[] = @async begin
-        accumulated = UInt8[] # ✅ Le bac de rétention
+        accumulated = UInt8[]
         
         while current_process[] !== nothing && isopen(sock)
             try
                 data = recv(sock)
-                append!(accumulated, data) # On colle les paquets
-                
-                # Dès qu'on a la bonne taille, on dessine !
+                append!(accumulated, data)
                 while length(accumulated) >= 2048
                     chunk = accumulated[1:2048]
                     DSPVisualizer.process_audio_chunk(chunk)
-                    deleteat!(accumulated, 1:2048) # On retire ce qu'on a lu
+                    deleteat!(accumulated, 1:2048)
                 end
                 
-                # Sécurité anti-fuite de mémoire
                 if length(accumulated) > 16000
                     empty!(accumulated)
                 end

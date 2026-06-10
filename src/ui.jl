@@ -41,58 +41,6 @@ function create_window()
     Theme.add_css_class!(title_label, "title-display")
     push!(display_vbox, title_label)
     
-    # # === ANALYSEUR DE SPECTRE (DSP) ===
-    # canvas = GtkCanvas(600, 60) # 60 pixels de haut pour être élégant
-    # push!(vbox, canvas)
-    
-    # # Fonction de dessin officielle (sans la macro buggée !)
-    # canvas.draw = function(widget)
-    #     try
-    #         ctx = getgc(widget)
-    #         w = width(widget)
-    #         h = height(widget)
-            
-    #         # Fond gris très sombre pour contraster
-    #         rectangle(ctx, 0, 0, w, h)
-    #         set_source_rgb(ctx, 0.15, 0.15, 0.15)
-    #         fill(ctx)
-            
-    #         # On récupère les valeurs mathématiques de la musique
-    #         bands = AudioEngine.DSPVisualizer.get_bands()
-    #         n = length(bands)
-    #         bw = w / n
-            
-    #         for i in 1:n
-    #             val = min(1.0, bands[i]) # Coupe si ça dépasse
-    #             bh = val * h
-                
-    #             # 🧡 LE BEAU ORANGE DE TON THÈME (RGB: 1.0, 0.55, 0.0)
-    #             # La transparence augmente quand la barre est plus haute
-    #             set_source_rgba(ctx, 1.0, 0.55, 0.0, 0.4 + (val * 0.6))
-                
-    #             # On dessine la barre (arrondie visuellement par l'espacement)
-    #             rectangle(ctx, (i-1)*bw + 2, h - bh, bw - 4, bh)
-    #             fill(ctx)
-    #         end
-    #     catch
-    #         # Si le dessin plante une frame, on l'ignore silencieusement
-    #     end
-    # end
-
-    # # Rafraîchissement du Canvas (20 FPS)
-    # @async begin
-    #     while isopen(win) # ✅ FIX : On s'arrête de dessiner si la fenêtre est fermée !
-    #         sleep(0.05)
-    #         if AudioEngine.is_playing()
-    #             Gtk.g_idle_add() do
-    #                 if isopen(win)
-    #                     try reveal(canvas, true) catch end
-    #                 end
-    #                 return false
-    #             end
-    #         end
-    #     end
-    # end
     
     # === BOUTONS CRUD ===
     btn_box = GtkBox(:h)
@@ -132,12 +80,10 @@ function create_window()
     set_gtk_property!(ctrl_box, :halign, Gtk.GConstants.GtkAlign.CENTER)
     push!(vbox, ctrl_box)
     
-    # btn_prev = GtkButton("⏮")
     btn_play = GtkButton("▶ Play")
     btn_stop = GtkButton("■ Stop")
-    # btn_next = GtkButton("⏭")
     
-    for btn in [btn_play, btn_stop] # , btn_prev, btn_next  
+    for btn in [btn_play, btn_stop]
         Theme.add_css_class!(btn, "transport")
         push!(ctrl_box, btn)
     end
@@ -179,42 +125,7 @@ function create_window()
         set_gtk_property!(title_label, :label, "Arrêté")
         println("■ Stop")
     end
-    
-    # signal_connect(btn_prev, "clicked") do _
-    #     iter = Gtk.selected(selection)
-    #     if iter !== nothing
-    #         path = Gtk.GAccessor.path(list_store, iter)
-    #         idx = parse(Int, Gtk.GAccessor.to_string(path)) + 1
-    #         if idx > 1
-    #             new_iter = Gtk.iter_from_index(list_store, idx - 1)
-    #             Gtk.select(selection, new_iter)
-    #             play_current()
-    #         end
-    #     elseif length(list_store) > 0
-    #         iter = Gtk.iter_from_index(list_store, length(list_store))
-    #         Gtk.select(selection, iter)
-    #         play_current()
-    #     end
-    # end
-    
-    # signal_connect(btn_next, "clicked") do _
-    #     iter = Gtk.selected(selection)
-    #     n = length(list_store)
-    #     if iter !== nothing
-    #         path = Gtk.GAccessor.path(list_store, iter)
-    #         idx = parse(Int, Gtk.GAccessor.to_string(path)) + 1
-    #         if idx < n
-    #             new_iter = Gtk.iter_from_index(list_store, idx + 1)
-    #             Gtk.select(selection, new_iter)
-    #             play_current()
-    #         end
-    #     elseif n > 0
-    #         iter = Gtk.iter_from_index(list_store, 1)
-    #         Gtk.select(selection, iter)
-    #         play_current()
-    #     end
-    # end
-    
+       
     signal_connect(tree_view, "row-activated") do widget, path, col
         iter = Gtk.selected(selection)
         if iter !== nothing
@@ -222,7 +133,6 @@ function create_window()
         end
     end
     
-    # Ajouter / Supprimer ...
     signal_connect(btn_add, "clicked") do _
         dialog = GtkDialog("Ajouter une radio", win, Gtk.GConstants.GtkDialogFlags.MODAL, (("Annuler", 0), ("Ajouter", 1)))
         content = Gtk.GAccessor.content_area(dialog)
@@ -246,7 +156,7 @@ function create_window()
         iter = Gtk.selected(selection)
         if iter === nothing return end
         name = list_store[iter, 1]; editable = list_store[iter, 3]
-        if !editable println("❌ Impossible de supprimer une radio par défaut"); return end
+        if !editable println("Impossible de supprimer une radio par défaut"); return end
         dlg = GtkDialog("Confirmer", win, Gtk.GConstants.GtkDialogFlags.MODAL, (("Annuler", 0), ("Supprimer", 1)))
         content = Gtk.GAccessor.content_area(dlg)
         v = GtkBox(:v); set_gtk_property!(v, :margin, 20); push!(content, v); push!(v, GtkLabel("Supprimer '$name' ?"))

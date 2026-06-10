@@ -1,8 +1,6 @@
 module UI
 
 using Gtk
-using Cairo
-using Graphics
 
 include("theme.jl")
 using .Theme

@@ -35,6 +35,7 @@ julia --project=. main.jl
 │       └── webradio-julia.png
 └── src
     ├── audio_engine.jl
+    ├── dsp.jl
     ├── metadata.jl
     ├── persistence.jl
     ├── theme.jl
